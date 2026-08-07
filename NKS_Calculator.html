@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NKS Adaptive Safety Calculator</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 400px; text-align: center; }
+        h1 { color: #2c3e50; font-size: 24px; margin-bottom: 20px; }
+        h1 span { color: #e74c3c; font-weight: bold; }
+        .form-group { margin-bottom: 20px; text-align: left; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; color: #34495e; }
+        select, input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background-color: #2c3e50; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 10px; transition: 0.3s; }
+        button:hover { background-color: #34495e; }
+        #results { margin-top: 30px; display: none; background: #ecf0f1; padding: 20px; border-radius: 8px; }
+        .result-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        .result-item:last-child { border-bottom: none; }
+        .value { font-weight: bold; color: #27ae60; }
+        .warning { color: #e74c3c; font-size: 14px; margin-top: 10px; display: none; }
+        .footer { margin-top: 20px; font-size: 12px; color: #95a5a6; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1><span>NKS</span> Adaptive Safety Calculator</h1>
+    
+    <div class="form-group">
+        <label for="citySelect">Select City / Hazard</label>
+        <select id="citySelect">
+            <option value="">-- Choose a city --</option>
+            <option value="miami">Miami (Hurricane Wind)</option>
+            <option value="chicago">Chicago (Winter Wind)</option>
+            <option value="la">Los Angeles (Seismic PGA)</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="yearInput">Select Year</label>
+        <input type="number" id="yearInput" min="1970" max="2025" placeholder="e.g. 2023">
+    </div>
+
+    <button onclick="calculateNKS()">Calculate NKS Factor</button>
+
+    <div id="results">
+        <div class="result-item"><span>NKS Adaptive Factor (Ω):</span> <span class="value" id="outputOmega">--</span></div>
+        <div class="result-item"><span>Steel Savings / Load Reduction:</span> <span class="value" id="outputSavings">--</span></div>
+        <div class="result-item"><span>Design Wind / PGA Load:</span> <span class="value" id="outputLoad">--</span></div>
+    </div>
+    <div id="warningMsg" class="warning">⚠️ Data not available for this year.</div>
+    <div class="footer">Powered by the NKS Framework. © 2026</div>
+</div>
+
+<script>
+    // Load the data from the JSON files (We will load these next step)
+    let miamiData = [];
+    let chicagoData = [];
+    let laData = [];
+
+    async function loadData() {
+        try {
+            const miamiResp = await fetch('miami_nks.json');
+            miamiData = await miamiResp.json();
+            const chicagoResp = await fetch('chicago_nks.json');
+            chicagoData = await chicagoResp.json();
+            const laResp = await fetch('la_nks.json');
+            laData = await laResp.json();
+            console.log("✅ Data loaded successfully!");
+        } catch (e) {
+            console.log("⚠️ Data files not found locally. Please ensure JSON files are in the same folder as this HTML.");
+        }
+    }
+
+    // Load data when the page opens
+    loadData();
+
+    function calculateNKS() {
+        const city = document.getElementById('citySelect').value;
+        const year = parseInt(document.getElementById('yearInput').value);
+        const resultsDiv = document.getElementById('results');
+        const warningMsg = document.getElementById('warningMsg');
+        
+        resultsDiv.style.display = 'none';
+        warningMsg.style.display = 'none';
+
+        if (!city || !year) {
+            alert("Please select a city and enter a year.");
+            return;
+        }
+
+        let data = [];
+        if (city === 'miami') data = miamiData;
+        else if (city === 'chicago') data = chicagoData;
+        else if (city === 'la') data = laData;
+
+        // Find the entry for the specific year
+        const entry = data.find(item => item.Year === year);
+
+        if (entry) {
+            // Display results
+            document.getElementById('outputOmega').innerText = entry.Omega_NKS.toFixed(3);
+            // Calculate savings based on Omega (simplified)
+            let savings = (1 - 1/entry.Omega_NKS) * 100;
+            document.getElementById('outputSavings').innerText = savings.toFixed(1) + '%';
+            document.getElementById('outputLoad').innerText = entry.V_50.toFixed(2) + ' m/s';
+            resultsDiv.style.display = 'block';
+        } else {
+            warningMsg.style.display = 'block';
+        }
+    }
+</script>
+
+</body>
+</html>
