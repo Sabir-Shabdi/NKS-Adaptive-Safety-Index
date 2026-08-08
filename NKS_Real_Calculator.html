@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NKS Real Engineering Calculator</title>
+    <style>
+        /* Same clean style as before */
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 450px; max-width: 90%; }
+        h1 { color: #2c3e50; font-size: 24px; margin-bottom: 20px; text-align: center; }
+        h1 span { color: #e74c3c; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; color: #34495e; font-size: 14px; }
+        select, input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #2c3e50; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        button:hover { background: #34495e; }
+        #results { margin-top: 30px; display: none; background: #ecf0f1; padding: 20px; border-radius: 8px; }
+        .result-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 15px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+        .result-item:last-child { border-bottom: none; }
+        .value { font-weight: bold; color: #27ae60; }
+        .warning { color: #e74c3c; font-size: 14px; margin-top: 10px; display: none; text-align: center; }
+        .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #95a5a6; }
+        .note { font-size: 12px; color: #7f8c8d; margin-top: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1><span>NKS</span> Real Engineering Calculator</h1>
+    
+    <div class="form-group">
+        <label for="citySelect">Select City / Hazard</label>
+        <select id="citySelect">
+            <option value="">-- Choose a city --</option>
+            <option value="miami">Miami (Hurricane Wind)</option>
+            <option value="chicago">Chicago (Winter Wind)</option>
+            <option value="la">Los Angeles (Seismic PGA)</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="yearInput">Select Year (1970-2025)</label>
+        <input type="number" id="yearInput" min="1970" max="2025" placeholder="e.g. 2023">
+    </div>
+
+    <button onclick="runRealCalculation()">Calculate NKS Design Load</button>
+
+    <div id="results">
+        <div class="result-item"><span>NKS Adaptive Factor (Ω):</span> <span class="value" id="outputOmega">--</span></div>
+        <div class="result-item"><span>Steel Savings / Load Reduction:</span> <span class="value" id="outputSavings">--</span></div>
+        <div class="result-item"><span>50-Year Return Wind Speed (V50):</span> <span class="value" id="outputV50">--</span></div>
+        <div class="result-item" style="border-bottom: 2px solid #2c3e50; padding-bottom: 12px; margin-bottom: 12px;"><span><strong>NKS Design Load:</strong></span> <span class="value" id="outputDesignLoad" style="color: #e74c3c; font-size: 18px;">--</span></div>
+        <div class="result-item"><span>Eurocode Minimum β:</span> <span class="value" style="color: #2980b9;">3.15</span></div>
+        <div class="result-item"><span>Your Calculated β:</span> <span class="value" id="outputBeta" style="color: #27ae60;">--</span></div>
+    </div>
+    <div id="warningMsg" class="warning">⚠️ Data not available for this year. Please choose 1970-2025.</div>
+    <div class="note">* This tool performs real-time Gumbel fitting and Monte Carlo simulation directly in your browser.</div>
+    <div class="footer">Powered by the NKS Framework. © 2026</div>
+</div>
+
+<script>
+    // --- Step 1: Load the raw data ---
+    let miamiData = [];
+    let chicagoData = [];
+    let laData = [];
+
+    async function loadData() {
+        try {
+            const miamiResp = await fetch('miami_raw.json');
+            miamiData = await miamiResp.json();
+            const chicagoResp = await fetch('chicago_raw.json');
+            chicagoData = await chicagoResp.json();
+            const laResp = await fetch('la_raw.json');
+            laData = await laResp.json();
+            console.log("✅ Raw data loaded successfully!");
+        } catch (e) {
+            console.log("⚠️ Data files not found. Please ensure JSON files are in the same folder.");
+            document.getElementById('warningMsg').innerText = "⚠️ Data files missing. Please upload miami_raw.json, chicago_raw.json, and la_raw.json.";
+            document.getElementById('warningMsg').style.display = 'block';
+        }
+    }
+    loadData();
+
+    // --- Step 2: Gumbel Math Functions ---
+    function gumbelFit(values) {
+        const n = values.length;
+        const mean = values.reduce((a,b) => a + b, 0) / n;
+        const std = Math.sqrt(values.reduce((a,b) => a + (b - mean)**2, 0) / (n - 1));
+        // Approximate Gumbel parameters using Method of Moments
+        const sigma = std * Math.sqrt(6) / Math.PI;
+        const mu = mean - 0.5772 * sigma;
+        return { mu, sigma };
+    }
+
+    function gumbelPPF(p, mu, sigma) {
+        return mu - sigma * Math.log(-Math.log(p));
+    }
+
+    function normPPF(p) {
+        // Approximation for inverse normal CDF
+        if (p <= 0) return -Infinity;
+        if (p >= 1) return Infinity;
+        const a1 = -39.6968302866538, a2 = 220.946098424521, a3 = -275.928510446969;
+        const a4 = 138.357751867269, a5 = -30.6647980661472, a6 = 2.50662827745924;
+        const b1 = -54.4760987982241, b2 = 161.585836858041, b3 = -155.698979859887;
+        const b4 = 66.8013118877197, b5 = -13.2806815528857;
+        let x = p;
+        if (x > 0.5) x = 1 - x;
+        let y = Math.sqrt(-2 * Math.log(x));
+        let z = y - (a1 + a2*y + a3*y*y + a4*y*y*y + a5*y*y*y*y + a6*y*y*y*y*y) / 
+                  (1 + b1*y + b2*y*y + b3*y*y*y + b4*y*y*y*y + b5*y*y*y*y*y);
+        return p > 0.5 ? -z : z;
+    }
+
+    // --- Step 3: The Real Calculation Engine ---
+    function runRealCalculation() {
+        const city = document.getElementById('citySelect').value;
+        const year = parseInt(document.getElementById('yearInput').value);
+        const resultsDiv = document.getElementById('results');
+        const warningMsg = document.getElementById('warningMsg');
+        
+        resultsDiv.style.display = 'none';
+        warningMsg.style.display = 'none';
+
+        if (!city || isNaN(year) || year < 1970 || year > 2025) {
+            alert("Please select a valid city and a year between 1970 and 2025.");
+            return;
+        }
+
+        let data = [];
+        let baselineV50 = 0;
+        if (city === 'miami') { data = miamiData; baselineV50 = 49.2; }
+        else if (city === 'chicago') { data = chicagoData; baselineV50 = 52.1; }
+        else if (city === 'la') { data = laData; baselineV50 = 0.62; }
+
+        if (data.length === 0) {
+            warningMsg.innerText = "⚠️ Data is still loading. Please wait a moment and try again.";
+            warningMsg.style.display = 'block';
+            return;
+        }
+
+        // Filter 30-year window (end year is the selected year)
+        const endYear = year;
+        const startYear = endYear - 30;
+        const windowData = data.filter(row => {
+            const d = new Date(row.Date);
+            return d.getFullYear() >= startYear && d.getFullYear() <= endYear;
+        });
+
+        if (windowData.length < 50) {
+            warningMsg.innerText = "⚠️ Insufficient data for this year (need at least 50 events).";
+            warningMsg.style.display = 'block';
+            return;
+        }
+
+        // Extract values (wind speed or PGA)
+        const values = windowData.map(row => {
+            if (city === 'miami' || city === 'chicago') return parseFloat(row.Max_Wind_mps);
+            else return parseFloat(row.Max_PGA_g);
+        }).filter(v => !isNaN(v) && v > 0);
+
+        // Fit Gumbel
+        const { mu, sigma } = gumbelFit(values);
+
+        // Calculate V50 for this year
+        const V50 = gumbelPPF(0.98, mu, sigma);
+
+        // Calculate EWMA Volatility (simplified)
+        const recentWindow = windowData.slice(-Math.floor(windowData.length * 0.25));
+        const olderWindow = windowData.slice(0, windowData.length - recentWindow.length);
+        const recentValues = recentWindow.map(row => city === 'miami' || city === 'chicago' ? parseFloat(row.Max_Wind_mps) : parseFloat(row.Max_PGA_g)).filter(v => !isNaN(v) && v > 0);
+        const olderValues = olderWindow.map(row => city === 'miami' || city === 'chicago' ? parseFloat(row.Max_Wind_mps) : parseFloat(row.Max_PGA_g)).filter(v => !isNaN(v) && v > 0);
+        
+        const recentMean = recentValues.reduce((a,b) => a + b, 0) / recentValues.length;
+        const recentStd = Math.sqrt(recentValues.reduce((a,b) => a + (b - recentMean)**2, 0) / (recentValues.length - 1));
+        const olderMean = olderValues.reduce((a,b) => a + b, 0) / olderValues.length;
+        const olderStd = Math.sqrt(olderValues.reduce((a,b) => a + (b - olderMean)**2, 0) / (olderValues.length - 1));
+        
+        const weightedStd = 0.7 * recentStd + 0.3 * olderStd;
+        const weightedMean = 0.7 * recentMean + 0.3 * olderMean;
+        const CV20 = weightedStd / weightedMean;
+
+        // Calculate Crisis Trigger
+        const last3Years = windowData.filter(row => {
+            const d = new Date(row.Date);
+            return d.getFullYear() >= (endYear - 3);
+        });
+        const last3Values = last3Years.map(row => city === 'miami' || city === 'chicago' ? parseFloat(row.Max_Wind_mps) : parseFloat(row.Max_PGA_g)).filter(v => !isNaN(v) && v > 0);
+        const mean3 = last3Values.reduce((a,b) => a + b, 0) / last3Values.length;
+        const mean20 = windowData.map(row => city === 'miami' || city === 'chicago' ? parseFloat(row.Max_Wind_mps) : parseFloat(row.Max_PGA_g)).filter(v => !isNaN(v) && v > 0).reduce((a,b) => a + b, 0) / windowData.length;
+        const psi = (mean3 / mean20 > 1.25) ? 1.12 : 1.0;
+
+        // Calculate Omega
+        const beta0 = 3.5;
+        const delta = 0.22;
+        const floor = 1.08;
+        const ratio = V50 / baselineV50;
+        let omega = Math.pow(ratio, beta0) * (1 + delta * CV20) * psi;
+        omega = Math.max(omega, floor);
+
+        // Calculate Design Load
+        const designLoad = omega * V50;
+
+        // Simple Monte Carlo for Beta
+        const mcIterations = 5000;
+        let failures = 0;
+        for (let i = 0; i < mcIterations; i++) {
+            const randomLoad = gumbelPPF(Math.random(), mu, sigma);
+            const factoredLoad = randomLoad * omega;
+            if (factoredLoad > baselineV50) failures++;
+        }
+        const Pf = failures / mcIterations;
+        let beta = 4.5;
+        if (Pf > 0 && Pf < 1) beta = -normPPF(Pf);
+
+        // Display Results
+        document.getElementById('outputOmega').innerText = omega.toFixed(3);
+        const savings = (1 - 1/omega) * 100;
+        document.getElementById('outputSavings').innerText = savings.toFixed(2) + '%';
+        document.getElementById('outputV50').innerText = V50.toFixed(2) + ' m/s';
+        document.getElementById('outputDesignLoad').innerText = designLoad.toFixed(2) + ' m/s';
+        document.getElementById('outputBeta').innerText = beta.toFixed(2);
+        resultsDiv.style.display = 'block';
+    }
+</script>
+</body>
+</html>
