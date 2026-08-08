@@ -64,7 +64,8 @@
     let laData = [];
 
     async function loadData() {
-        try {const miamiResp = await fetch('https://raw.githubusercontent.com/Sabir-Shabdi/NKS-Adaptive-Safety-Index/main/miami_raw.json');
+        try {
+            const miamiResp = await fetch('https://raw.githubusercontent.com/Sabir-Shabdi/NKS-Adaptive-Safety-Index/main/miami_raw.json');
             miamiData = await miamiResp.json();
             const chicagoResp = await fetch('https://raw.githubusercontent.com/Sabir-Shabdi/NKS-Adaptive-Safety-Index/main/chicago_raw.json');
             chicagoData = await chicagoResp.json();
