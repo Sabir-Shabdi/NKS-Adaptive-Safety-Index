@@ -65,11 +65,11 @@
 
     async function loadData() {
         try {
-            const miamiResp = await fetch('https://raw.githubusercontent.com/Sabir-Shabdi/NKS-Adaptive-Safety-Index/main/miami_raw.json');
+            const miamiResp = await fetch('https://cdn.jsdelivr.net/gh/Sabir-Shabdi/NKS-Adaptive-Safety-Index/miami_raw.json');
             miamiData = await miamiResp.json();
-            const chicagoResp = await fetch('https://raw.githubusercontent.com/Sabir-Shabdi/NKS-Adaptive-Safety-Index/main/chicago_raw.json');
+            const chicagoResp = await fetch('https://cdn.jsdelivr.net/gh/Sabir-Shabdi/NKS-Adaptive-Safety-Index/chicago_raw.json');
             chicagoData = await chicagoResp.json();
-            const laResp = await fetch('https://raw.githubusercontent.com/Sabir-Shabdi/NKS-Adaptive-Safety-Index/main/la_raw.json');
+            const laResp = await fetch('https://cdn.jsdelivr.net/gh/Sabir-Shabdi/NKS-Adaptive-Safety-Index/la_raw.json')
             laData = await laResp.json();
         } catch (e) {
             document.getElementById('warningMsg').innerText = "⚠️ Data files missing. Please upload JSON files.";
